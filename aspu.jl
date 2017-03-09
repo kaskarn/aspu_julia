@@ -29,12 +29,13 @@ end
 filein = ARGS[1]
 B = ARGS[2]
 
-@eval @everywhere B = $B
+@everywhere using Distributions, DataFrames
+@everywhere include("aspu_functions.jl")
+
 nsnp, ntraits = makecov(filein)
 
+@eval @everywhere B = $B
 @everywhere begin
-  using Distributions, DataFrames
-  include("aspu_functions.jl")
   estv = readdlm("vcov_aspu.txt", ',')
   mvn = MvNormal(convert(Matrix{Float64}, estv))
   zb = Matrix{Float32}(9, ceil(Int64, 10^B)) #could be unsigned
