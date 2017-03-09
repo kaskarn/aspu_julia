@@ -9,7 +9,6 @@ function makecov(infile)
   # Compute covariance matrix and write to disk
   in_res = readtable(infile, header=true)
   nsnp = size(in_res)[1]
-  snpnames = in_res[1]
   in_mat = convert(Matrix{Float32}, in_res[:,2:length(in_res)])
   ntraits = size(in_mat)[2]
 
@@ -17,7 +16,7 @@ function makecov(infile)
   nullsnps = minZ[:] .> 0.05/(nsnp/ntraits)
   estv = cor(in_mat[nullsnps,:])
   writecsv("vcov_aspu.txt", estv)
-  return nsnp, snpnames, ntraits
+  return nsnp, ntraits
 end
 
 function parsesnp(snpnow)
