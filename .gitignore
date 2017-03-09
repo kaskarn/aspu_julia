@@ -49,3 +49,8 @@ $RECYCLE.BIN/
 Network Trash Folder
 Temporary Items
 .apdisk
+testdata/aricsolshare_fix.csv
+test.txt
+vcov_aspu.txt
+aspu_results.txt
+aspu_testing.jl

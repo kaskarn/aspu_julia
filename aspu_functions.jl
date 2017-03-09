@@ -79,13 +79,12 @@ end
 
 function runsnp!(snp,r::aspurun,zb)
   snpname, Zi = parsesnp(snp)
-  p0 = r.p0
-  n = length(r.mvn.μ)
-  aspu = aspu!(ceil(Int,10^p0), Zi, r.mvn, zb, n)
+  p0 = r.p0 - 1
+  aspu = 0
   while (p0 < r.B) && (aspu < 15/(10^p0))
     p0 += 1
     p0 > r.B && (p0 = r.B)
-    aspu = aspu!(ceil(Int,10^p0), Zi, r.mvn, zb, n)
+    aspu = aspu!(ceil(Int,10^p0), Zi, r.mvn, zb, length(r.mvn.μ))
   end
   return snpname, aspu
 end
