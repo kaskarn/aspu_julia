@@ -1,5 +1,5 @@
 function pmap_io(f, io, n, chunksize = 10000)
-    np = nprocs()  # determine the number of processes available
+    np = nprocs()
     results = Array(Tuple{String,Float64},n)
     i = 1
     nextidx() = (idx=i; i+=1; idx)
@@ -10,7 +10,7 @@ function pmap_io(f, io, n, chunksize = 10000)
                     while !eof(io)
                         snp = readline(io)
                         idx = nextidx()
-                        idx%chunksize == 0 && println("$(Dates.format(now(), "HH:MM")): working on SNP #$(idx): $(snp[1])")
+                        idx%chunksize == 0 && println("$(Dates.format(now(), "HH:MM")): working on SNP #$(idx)")
                         results[idx] = remotecall_fetch(f, p, snp)
                     end
                 end
@@ -27,8 +27,9 @@ else
 end
 
 filein = ARGS[1]
-B = ARGS[2]
+B = parse(ARGS[2])
 
+using Distributions, DataFrames
 @everywhere using Distributions, DataFrames
 @everywhere include("aspu_functions.jl")
 

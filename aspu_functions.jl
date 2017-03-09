@@ -25,6 +25,7 @@ function parsesnp(snpnow)
   n = length(tm)
   return tm[1], broadcast(parse, tm[2:n])
 end
+
 function getspu!(spu::Vector{Float32}, z, n::Int64)
   for i = 1:8
     @inbounds spu[i] = z[1]^i
