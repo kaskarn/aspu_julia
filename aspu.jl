@@ -43,7 +43,6 @@ nsnp, ntraits = makecov(filein)
   thisrun = aspurun(B, mvn, 3)
 end
 
-resio = open("aspu_results.txt", "w+")
 insnp = open(filein)
 readline(insnp)
 println("Setup complete")
@@ -51,5 +50,7 @@ println("Setup complete")
 tic()
 res = pmap_io(x->runsnp!(x,thisrun,zb), insnp, nsnp) #r
 println("Job completed in $(round(toq()/3600,3)) hours")
+
+writedlm("aspu_results.txt", res)
 
 exit()

@@ -4,16 +4,22 @@ include("aspu_check.jl")
 
 filein = ARGS[1]
 
+B = 6
+
+nsnp, ntraits = makecov(filein)
+estv = readdlm("vcov_aspu.txt", ',')
+mvn = MvNormal(convert(Matrix{Float64}, estv))
+zb = Matrix{Float32}(9, ceil(Int64, 10^B)) #could be unsigned
+thisrun = aspurun(B, mvn, 3)
+
 insnp = open(filein)
 readline(insnp)
 
-B = 6
 snp = readline(insnp)
 Zi = parsesnp(snp)[2]
 
 Z0 = rand(thisrun.mvn, 10^B)
 Z2 = transpose(Z0)
-
 
 @rput Z2 Zi B
 reval("source('Raspu.R')")
