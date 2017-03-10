@@ -7,12 +7,13 @@ filein = ARGS[1]
 insnp = open(filein)
 readline(insnp)
 
+B = 6
 snp = readline(insnp)
 Zi = parsesnp(snp)[2]
 
 Z0 = rand(thisrun.mvn, 10^B)
 Z2 = transpose(Z0)
-B = 6
+
 
 @rput Z2 Zi B
 reval("source('Raspu.R')")
