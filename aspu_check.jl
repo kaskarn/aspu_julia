@@ -51,6 +51,7 @@ function aspu_check(B, Zi, Z0, n)
   spu = zeros(Float32, 9)
   pval = ones(9)
   tm = zeros(Float32, n)
+  rnk = Array(Float64, 2, B)
   for i = 1:size(Z0,2)
     getspu!(spu, Z0[:,i], n)
     zb[:,i] = spu
@@ -59,18 +60,19 @@ function aspu_check(B, Zi, Z0, n)
     end
   end
   minp = minimum(pval)/(B+1)
-  for i = 1:9
-    zb[i,1:B] = tiedrank(zb[i,1:B])
+  rnk[1,:] = tiedrank(zb[1,1:B])
+  for i = 2:9
+    rnk[2,:] = tiedrank(zb[i,1:B])
+    for j = 1:B
+      rnk[2,j] > rnk[1,j] && (rnk[1,j] = rnk[2,j])
+    end
   end
   for i = 1:B
-    for j = 2:9
-      zb[j,i] > zb[1,i] && (zb[1,i] = zb[j,i])
-    end
-    zb[1,i] = (1 + B - zb[1,i])/B
+    rnk[1,i] = (1 + B - rnk[1,i])/B
   end
   aspu = 1
   for i = 1:B
-    zb[1,i] < minp && (aspu += 1)
+    rnk[1,i] < minp && (aspu += 1)
   end
   aspu/(B+1) #,zb[1,:],minp
 end

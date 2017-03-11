@@ -22,16 +22,15 @@ Z0 = rand(thisrun.mvn, 10^B)
 Z2 = transpose(Z0)
 
 @rput Z2 Zi B
-reval("source('Raspu.R')")
 
 #tests
 #OK march 2017
 @time R_res = rcopy("screenaSPU(Zi,10^B,Z2)")
-println("R result: $(R_res)")
+println("R result: $(R_res)\n")
 @time R_trans = aspu_Rtrans!(10^B, Zi, Z0, zb, 6)
-println(R_trans)
-println("Direct translation: $(R_trans)")
+println("Direct translation: $(R_trans)\n")
 @time Jul1 = aspu_check(10^B, Zi, Z0, 6)
-println("Optimized version: $(Jul1)")
-@time Julrand = aspu!(10^B, Zi, thisrun.mvn, zb, 6)
-println("New seed: $Julrand")
+println("Optimized version: $(Jul1)\n")
+@show Jul1 == R_trans == R_res
+Julrand = [aspu!(10^B, Zi, thisrun.mvn, zb, 6) for i = 1:10]
+println("10 random seeds: $(Julrand)")

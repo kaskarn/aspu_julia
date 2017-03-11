@@ -46,6 +46,12 @@ end
 insnp = open(filein)
 readline(insnp)
 println("Setup complete")
+[readline(insnp) for i in 1:873]
+snp = readline(insnp)
+res = runsnp!(snp,thisrun,zb)
+@time a1 = aspu!(10^8, parsesnp(snp)[2], mvn, zb, 6)
+@time a2 = aspu2!(10^8, parsesnp(snp)[2], mvn, zb, 6)
+@time a3 = aspu3!(10^8, parsesnp(snp)[2], mvn, zb, 6)
 
 tic()
 res = pmap_io(x->runsnp!(x,thisrun,zb), insnp, nsnp) #r
