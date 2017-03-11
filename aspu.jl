@@ -28,6 +28,7 @@ end
 
 filein = ARGS[1]
 B = parse(ARGS[2])
+chunksize = length(ARGS) > 2 ? ARGS[3] : 10000
 
 using Distributions, DataFrames
 @everywhere using Distributions, DataFrames
@@ -46,15 +47,9 @@ end
 insnp = open(filein)
 readline(insnp)
 println("Setup complete")
-[readline(insnp) for i in 1:873]
-snp = readline(insnp)
-res = runsnp!(snp,thisrun,zb)
-@time a1 = aspu!(10^8, parsesnp(snp)[2], mvn, zb, 6)
-@time a2 = aspu2!(10^8, parsesnp(snp)[2], mvn, zb, 6)
-@time a3 = aspu3!(10^8, parsesnp(snp)[2], mvn, zb, 6)
 
 tic()
-res = pmap_io(x->runsnp!(x,thisrun,zb), insnp, nsnp) #r
+res = pmap_io(x->runsnp!(x,thisrun,zb), insnp, nsnp, chunksize) #r
 println("Job completed in $(round(toq()/3600,3)) hours")
 
 writedlm("aspu_results.txt", res)
