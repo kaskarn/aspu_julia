@@ -20,6 +20,7 @@ function getspu(z, n::Int64)
   getspu!(spu,z,n)
   return spu
 end
+
 function aspu_Rtrans!(B, Zi, Z0, zb, n)
   Zi_spu = getspu(Zi,n)
   spu = zeros(Float32, 9)
