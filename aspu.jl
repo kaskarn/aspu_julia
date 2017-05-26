@@ -44,7 +44,7 @@ nsnp, ntraits = makecov(filein)
   thisrun = Aspurun(logB, mvn, 3)
   runvals = Aspuvals(
     zeros(UInt32,2, ceil(Int64, 10^logB)),
-    Matrix{Float64}(9, ceil(Int64, 10^logB)),
+    Matrix{Float32}(9, ceil(Int64, 10^logB)),
     zeros(9),
     zeros(size(estv,2)),
     ones(9)
