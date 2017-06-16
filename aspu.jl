@@ -2,7 +2,7 @@ using Distributions, DataFrames, Base.Dates
 include("./aspu_utils.jl")
 
 #Parse options
-# ARGS = ["--logB", 5, "--incov", "vcov_aspu.txt", "--floatsize", "64"] #for testing
+#ARGS = ["--filein aspu_test.csv"] #for testing
 
 incmd = join(ARGS, " ")
 pinputs = Dict()
@@ -14,7 +14,6 @@ if !in(pinputs["floatsize"], ["32", "64"]); println("Error: floatsize must be 32
 float_t = pinputs["floatsize"] == "32" ? Float32 : Float64
 
 #Set input file path
-get!(pinputs, "filein", "aspu_test.csv")
 if !haskey(pinputs, "filein"); println("Error: no input file defined with filein\n"); exit(); end
 if !isfile(pinputs["filein"]); println("Error: input file not found\n"); exit(); end
 snpnames, in_tstats = readtstats(pinputs["filein"], float_t)
@@ -31,7 +30,7 @@ logB = parse(pinputs["logB"])
 #Set outname
 outname = haskey(pinputs, "fileout") ? pinputs["fileout"] : "aspu_results_$(Dates.format(now(), "Yud_HhMM")).csv"
 
-prinln("\nInputs:\n")
+println("\nInputs:\n")
 @show pinputs
 
 #Start workers
