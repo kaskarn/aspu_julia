@@ -1,8 +1,8 @@
 type Aspuvals
   rnk::Array{UInt32, 2}
-  zb::Array{Float32}
-  randspu::Vector{Float32}
-  randval::Vector{Float32}
+  zb::Array
+  randspu::Vector
+  randval::Vector
   pval::Vector{Int32}
 end
 
@@ -12,22 +12,29 @@ type Aspurun
   p0::Int64
 end
 
-
-function makecov(infile)
-  # Compute covariance matrix and write to disk
-  in_res = readtable(infile, header=true)
-  nsnp = size(in_res)[1]
-  in_mat = convert(Matrix{Float64}, in_res[:,2:length(in_res)])
-  ntraits = size(in_mat)[2]
-
-  minZ = minimum(2*cdf(Normal(), -abs(in_mat)), 2)
-  nullsnps = minZ[:] .> 0.05/(nsnp/ntraits)
-  estv = cor(in_mat[nullsnps,:])
-  writecsv("vcov_aspu.txt", estv)
-  return nsnp, ntraits
+function chunkify(mat, n)
+  r = size(mat,1)
+  chunksize = vcat(0, cumsum(fill(div(r, n), n) .+ (1:n .<= (r % n))))
+  s_inds = [ar[1]:ar[2] for ar in zip(chunksize[1:n]+1, chunksize[2:end])]
+  tstats_chunks = [mat[ind,:] for ind in s_inds]
+  tstats_chunks
 end
 
-# Written by rShekhtman
+function makecov(mat, outname="vcov_aspu.txt")
+  minZ = minimum(2*cdf(Normal(), -abs(mat)), 2)
+  nullsnps = minZ[:] .> 0.05/(size(mat,1)/size(mat,2))
+  estv = cor(mat[nullsnps,:])
+  writecsv("vcov_aspu.txt", estv)
+  outname
+end
+
+function readtstats(infile, T::DataType)
+  in_t = readtable(infile, header=true)
+  snpnames = copy(in_t[:,1])
+  tstats = convert(Matrix{T}, in_t[:,2:length(in_t)])
+  snpnames, tstats
+end
+
 # modified from: https://github.com/JuliaLang/julia/issues/939
 # http://rosettacode.org/wiki/Sorting_algorithms/Quicksort#Julia
 function InsertionSort!(A, order, ii=1, jj=length(A))
@@ -54,7 +61,6 @@ function InsertionSort!(A, order, ii=1, jj=length(A))
     return A
 end # function InsertionSort!
 
-# Written by rShekhtman
 # modified from: https://github.com/JuliaLang/julia/issues/939
 # http://rosettacode.org/wiki/Sorting_algorithms/Quicksort#Julia
 function quicksort!(A, order, i=1, j=length(A))
@@ -104,19 +110,19 @@ function getspu!(spu, z, n::Int64)
   0
 end
 
-function getspu(z::Vector{Float32}, n::Int64)
-  tmpspu = Array(Float32, 9)
+function getspu{T<:Real}(z::Vector{T}, n::Int64)
+  tmpspu = Array(T, 9)
   getspu!(tmpspu,z,n)
   tmpspu
 end
 
-function calc_spus!(x::Aspuvals, t_in::Vector{Float32},
+function calc_spus!{T<:Real}(x::Aspuvals, t_in::Vector{T},
   mvn::MvNormal, B::Int64)
 
-  n = size(x.randval,1)
+  n = length(mvn)
   zi_spu = getspu(t_in, n)
 
-  tmval = view(x.zb, 1:5, :)
+  tmval = view(x.zb, 1:n, :)
   rand!(mvn, tmval)
   firstline = tmval[:,1]
   for i in 2:B
@@ -134,8 +140,8 @@ function calc_spus!(x::Aspuvals, t_in::Vector{Float32},
   minp, aspu_gamma
 end
 
-function rank_spus!(rnk::Array{UInt32, 2},
-  zb::Array{Float32,2}, B::Int)
+function rank_spus!{T<:Real}(rnk::Array{UInt32, 2},
+  zb::Array{T,2}, B::Int)
 
   rnk1_v = view(rnk,1,1:B)
   # rnk2_v = view(rnk,2,1:B) slower than getindex()
@@ -166,11 +172,11 @@ function rank_spus!(rnk::Array{UInt32, 2},
   0
 end
 
-function aspu!(B::Int64, t_in, mvn, x::Aspuvals)
+function aspu!{T<:Real}(B::Int64, t_in::Array{T}, mvn, x::Aspuvals)
   fill!(x.pval, 1)
 
-  @time @inbounds @fastmath minp, aspu_gamma = calc_spus!(x, t_in, mvn, B)
-  @time @inbounds rank_spus!(x.rnk, x.zb, B)
+  @inbounds @fastmath minp, aspu_gamma = calc_spus!(x, t_in, mvn, B)
+  @inbounds rank_spus!(x.rnk, x.zb, B)
 
   aspu = 1
   @simd for i in 1:B
@@ -187,10 +193,9 @@ function parsesnp(snpnow)
   return tm[1], broadcast(parse32, tm[2:n])
 end
 
-function runsnp!(snp,r::Aspurun,x::Aspuvals, bmax = Inf)
+function runsnp!{T<:Real}(zi::Array{T, 1}, r::Aspurun, x::Aspuvals, bmax = Inf)
   p0, mvn = r.p0, r.mvn
   logB = min(r.logB, bmax)
-  snpname, zi = parsesnp(snp)
   aspu = 0
   aspu_gamma = 0
   while (p0 <= logB) && (aspu < 15/(10^(p0)))
@@ -198,5 +203,42 @@ function runsnp!(snp,r::Aspurun,x::Aspuvals, bmax = Inf)
     aspu, aspu_gamma = aspu!(ceil(Int,10^p0), zi, mvn, x)
     p0 += 1
   end
+  return aspu, aspu_gamma
+end
+
+function runsnp!(snp::AbstractString, r::Aspurun, x::Aspuvals, bmax = Inf)
+  snpname, zi = parsesnp(snp)
+  aspu, aspu_gamma = runsnp!(zi, r, x, bmax)
   return snpname, aspu, aspu_gamma
 end
+
+function runsnp!{T<:Real}(snpmat::Matrix{T}, r::Aspurun, x::Aspuvals, bmax = Inf)
+  return [runsnp!(snpmat[i,:],r, x, bmax) for i in 1:size(snpmat,1)]
+end
+
+# function runsnp!(snp::AbstractString,r::Aspurun, x::Aspuvals, bmax = Inf)
+#   p0, mvn = r.p0, r.mvn
+#   logB = min(r.logB, bmax)
+#   snpname, zi = parsesnp(snp)
+#   aspu = 0
+#   aspu_gamma = 0
+#   while (p0 <= logB) && (aspu < 15/(10^(p0)))
+#     p0 > logB && (p0 = logB)
+#     aspu, aspu_gamma = aspu!(ceil(Int,10^p0), zi, mvn, x)
+#     p0 += 1
+#   end
+#   return snpname, aspu, aspu_gamma
+# end
+
+
+
+
+
+
+
+
+
+
+
+
+#

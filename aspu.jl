@@ -1,82 +1,87 @@
-function pmap_io(f, io, n, chunksize = 10000)
-    np = nprocs()
-    results = Array(Tuple{String, Float64, Int64}, n)
-    i = 1
-    nextidx() = (idx=i; i+=1; idx)
-    @sync begin
-        for p=1:np
-            if p != myid() || np == 1
-                @async begin
-                    while !eof(io)
-                        snp = readline(io)
-                        idx = nextidx()
-                        idx%chunksize == 0 && println("$(Dates.format(now(), "HH:MM")): working on SNP #$(idx)")
-                        results[idx] = remotecall_fetch(f, p, snp)
-                    end
-                end
-            end
-        end
-    end
-    results
-end
+using Distributions, DataFrames, Base.Dates
+include("./aspu_utils.jl")
 
+#Parse options
+# ARGS = ["--logB", 5, "--incov", "vcov_aspu.txt", "--floatsize", "64"] #for testing
+
+incmd = join(ARGS, " ")
+pinputs = Dict()
+[get!(pinputs, split(i)[1], split(i)[2]) for i in split(incmd, "--")[2:end]]
+
+#Set Floating point width
+haskey(pinputs, "floatsize") || get!(pinputs, "floatsize", "32")
+if !in(pinputs["floatsize"], ["32", "64"]); println("Error: floatsize must be 32 or 64\n"); exit(); end
+float_t = pinputs["floatsize"] == "32" ? Float32 : Float64
+
+#Set input file path
+get!(pinputs, "filein", "aspu_test.csv")
+if !haskey(pinputs, "filein"); println("Error: no input file defined with filein\n"); exit(); end
+if !isfile(pinputs["filein"]); println("Error: input file not found\n"); exit(); end
+snpnames, in_tstats = readtstats(pinputs["filein"], float_t)
+
+#Set covariance
+haskey(pinputs, "incov") && if haskey(pinputs, "outcov"); println("Error: use either incov or outcov\n"); exit(); end
+haskey(pinputs, "incov") || haskey(pinputs, "outcov") || get!(pinputs, "outcov", "vcov_aspu.txt")
+fcov = haskey(pinputs, "incov") ? pinputs["incov"] : makecov(in_tstats, pinputs["outcov"])
+
+#Set logB
+haskey(pinputs, "logB") || get!(pinputs, "logB", "5")
+logB = parse(pinputs["logB"])
+
+#Set outname
+outname = haskey(pinputs, "fileout") ? pinputs["fileout"] : "aspu_results_$(Dates.format(now(), "Yud_HhMM")).csv"
+
+prinln("\nInputs:\n")
+@show pinputs
+
+#Start workers
 if haskey(ENV, "LSB_HOSTS")
-  addprocs(split(ENV["LSB_HOSTS"]))
+  addprocs(split(ENV["LSB_HOSTS"])[2:end])
 else
-  addprocs(nprocs() - 1)
+  addprocs(Sys.CPU_CORES-1)
 end
 
-filein = ARGS[1]
-logB = parse(ARGS[2])
-@eval @everywhere logB = $logB
-
-chunksize = length(ARGS) > 2 ? ARGS[3] : 10000
-
-using Distributions, DataFrames
 @everywhere using Distributions, DataFrames
-@everywhere include("aspu_utils.jl")
+@everywhere include("./aspu_utils.jl")
 
-nsnp, ntraits = makecov(filein)
+@eval @everywhere fcov = $fcov
+@eval @everywhere logB = $logB
+@eval @everywhere floatsize = $(pinputs["floatsize"])
+@everywhere float_t = floatsize == "32" ? Float32 : Float64
 
-@everywhere begin
-  estv = readdlm("vcov_aspu.txt", ',')
-  mvn = MvNormal(convert(Matrix{Float32}, estv))
+#Setup aspu objects
+@sync @everywhere begin
+  estv = readdlm(fcov, ',', float_t)
+  mvn = MvNormal(estv)
   thisrun = Aspurun(logB, mvn, 3)
   runvals = Aspuvals(
     zeros(UInt32,2, ceil(Int64, 10^logB)),
-    Matrix{Float32}(9, ceil(Int64, 10^logB)),
-    zeros(9),
-    zeros(size(estv,2)),
+    Matrix{float_t}(9, ceil(Int64, 10^logB)),
+    zeros(float_t, 9),
+    zeros(float_t, size(estv,2)),
     ones(9)
   )
 end
-gc()
 
-insnp = open(filein)
-readline(insnp)
-println("Setup complete")
+if haskey(pinputs, "norun"); prinln("All ready to go! Remove norun option to launch for good\n"); exit(); end
 
-tic()
-res = pmap_io(x->runsnp!(x, thisrun, runvals), insnp, nsnp, chunksize)
+#Chunk input (to do: maybe send directly to workers instead)
+tstats_chunks = chunkify(in_tstats, nworkers()*10)
 
-println("Job completed in $(round(toq()/3600,5)) hours")
+#Run models
+println("$(Dates.format(now(), "Yud_HhMM")): ASPU started on $(nworkers()) workers")
+@time out = pmap(x->runsnp!(x,thisrun,runvals), tstats_chunks)
+println("$(Dates.format(now(), "Yud_HhMM")): ASPU run finished. Writing to file...")
 
-writedlm("aspu_results.txt", res)
+fout = open(outname, "w")
+join(fout, ["snpid", "aspu_p", "gamma"], ',')
+snp_i = 1
+for res in out
+  for i in 1:size(res,1)
+    write(fout, "\n$(snpnames[snp_i]),$(join(res[i], ','))")
+    snp_i = snp_i+1
+  end
+end
+println("\nWriting complete.\n\nJob done.\n\n")
+
 exit()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#
