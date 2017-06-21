@@ -1,16 +1,13 @@
-type Aspuvals
-  rnk::Array{UInt32, 2}
-  zb::Array
-  randspu::Vector
-  randval::Vector
-  pval::Vector{Int32}
-end
+module aspu_utils
 
-type Aspurun
-  logB::Real
-  mvn::MvNormal
-  p0::Int64
-end
+using DataFrames, Distributions
+
+export
+  readtstats, makecov, chunkify,
+  pmap_msg, dtnow, parse_aspu,
+  nlines
+
+dtnow() = Dates.format(now(), "Yud_HhMM")
 
 function chunkify(mat, n)
   r = size(mat,1)
@@ -35,9 +32,112 @@ function readtstats(infile, T::DataType)
   snpnames, tstats
 end
 
+function pmap_msg(f, lst)
+    np = nprocs()
+    n = length(lst)
+    results = Vector{Any}(n)
+    i = 1
+    nextidx() = (idx=i; i+=1; idx)
+    @sync begin
+        for p=1:np
+            if p != myid() || np == 1
+                @async begin
+                    while true
+                        idx = nextidx()
+                        if idx > n
+                            break
+                        end
+                        (idx % (div(n,100))) == 0 && (println("$(dtnow()): Chunk $(idx) of $(n) started!"))
+                        results[idx] = remotecall_fetch(f, p, lst[idx])
+                    end
+                end
+            end
+        end
+    end
+    results
+end
+
+function parse_aspu(argsin)
+  incmd = join(argsin, " ")
+  pinputs = Dict()
+  [get!(pinputs, split(i)[1], split(i)[2]) for i in split(incmd, "--")[2:end]]
+
+  #ERRORS
+
+  #floating point width
+  if haskey(pinputs, "floatsize") && !in(pinputs["floatsize"], ["32", "64"])
+    println("Error: floatsize must be 32 or 64\n")
+    exit()
+  end
+
+  #input file
+  if !haskey(pinputs, "filein"); println("Error: no input file defined with filein\n"); exit(); end
+  if !isfile(pinputs["filein"]); println("Error: input file not found\n"); exit(); end
+
+  #covariance
+  haskey(pinputs, "incov") && if haskey(pinputs, "outcov"); println("Error: use either incov or outcov\n"); exit(); end
+  if haskey(pinputs, "replicate") && (haskey(pinputs, "keepzb") | haskey(pinputs, "logB"))
+    println("Cannot use --replicate with --keepzb or --logB\n")
+    exit()
+  end
+
+  #Set defaults
+  haskey(pinputs, "replicate") || haskey(pinputs, "logB") || get!(pinputs, "logB", "5")
+  haskey(pinputs, "outcov") || haskey(pinputs, "replicate") || get!(pinputs, "outcov", "vcov_aspu.txt")
+  haskey(pinputs, "floatsize") || get!(pinputs, "floatsize", "32")
+
+  if haskey(pinputs, "replicate")
+    dfltname = "aspu_results_$(dtnow())_replicate.csv"
+  else
+    logB = round(parse(pinputs["logB"]), 2)
+    dfltname = "aspu_results_$(dtnow())_$(round(10^logB/10^floor(logB),2))E$(floor(Int64,logB)).csv"
+  end
+
+  haskey(pinputs, "fileout") || get!(pinputs, "fileout", dfltname)
+
+  return pinputs
+end
+
+function nlines(filein)
+  zbrep = open(filein, "r")
+  zb_n = 0
+  while(!eof(zbrep))
+    readline(zbrep)
+    zb_n += 1
+  end
+  zb_n
+end
+
+end #end of module
+
+
+
+module aspu
+
+using Distributions
+
+export
+  Aspuvals, Aspurun,
+  runsnp!, runsnp_rep!, getspu!, aspu!,
+  rep_setup!
+
+type Aspuvals
+  rnk::Array{UInt32, 2}
+  zb::Array
+  pval::Vector{UInt32}
+end
+
+type Aspurun
+  logB::Int64
+  mvn::MvNormal
+  p0::Int64
+end
+
 # modified from: https://github.com/JuliaLang/julia/issues/939
 # http://rosettacode.org/wiki/Sorting_algorithms/Quicksort#Julia
-function InsertionSort!(A, order, ii=1, jj=length(A))
+function InsertionSort!{T<:Real}(A::AbstractArray{T, 1},
+  order::AbstractArray{UInt32, 1}, ii=1, jj=length(A))
+
     for i = ii+1 : jj
         j = i - 1
         temp  = A[i]
@@ -63,7 +163,9 @@ end # function InsertionSort!
 
 # modified from: https://github.com/JuliaLang/julia/issues/939
 # http://rosettacode.org/wiki/Sorting_algorithms/Quicksort#Julia
-function quicksort!(A, order, i=1, j=length(A))
+function quicksort!{T<:Real}(A::AbstractArray{T, 1},
+  order::AbstractArray{UInt32, 1}, i=1, j=length(A))
+
     if j > i
       if  j - i <= 10
         # Insertion sort for small groups is faster than Quicksort
@@ -93,7 +195,9 @@ function quicksort!(A, order, i=1, j=length(A))
 end # function quicksort!
 
 
-function getspu!(spu, z, n::Int64)
+function getspu!{T<:Real}(spu::AbstractArray{T, 1},
+  z::AbstractArray{T, 1}, n::Int64)
+
   for i = 1:8
     @inbounds spu[i] = z[1]^i
   end
@@ -119,10 +223,11 @@ end
 function calc_spus!{T<:Real}(x::Aspuvals, t_in::Vector{T},
   mvn::MvNormal, B::Int64)
 
+  fill!(x.pval, 1)
   n = length(mvn)
   zi_spu = getspu(t_in, n)
 
-  tmval = view(x.zb, 1:n, :)
+  tmval = view(x.zb, 1:n, 1:B)
   rand!(mvn, tmval)
   firstline = tmval[:,1]
   for i in 2:B
@@ -133,7 +238,7 @@ function calc_spus!{T<:Real}(x::Aspuvals, t_in::Vector{T},
     end
   end
   getspu!(view(x.zb, :, B), firstline, n)
-  x.pval += (x.zb[:,B] .> zi_spu)
+  x.pval += (x.zb[:, B] .> zi_spu)
 
   aspu_gamma = sortperm(x.pval)[1]
   minp = x.pval[aspu_gamma]/(B+1)
@@ -141,7 +246,7 @@ function calc_spus!{T<:Real}(x::Aspuvals, t_in::Vector{T},
 end
 
 function rank_spus!{T<:Real}(rnk::Array{UInt32, 2},
-  zb::Array{T,2}, B::Int)
+  zb::Array{T,2}, B::Int64)
 
   rnk1_v = view(rnk,1,1:B)
   # rnk2_v = view(rnk,2,1:B) slower than getindex()
@@ -172,17 +277,17 @@ function rank_spus!{T<:Real}(rnk::Array{UInt32, 2},
   0
 end
 
-function aspu!{T<:Real}(B::Int64, t_in::Array{T}, mvn, x::Aspuvals)
-  fill!(x.pval, 1)
+function aspu!{T<:Real}(B::Int64, t_in::Array{T},
+  mvn::MvNormal, x::Aspuvals)
 
   @inbounds @fastmath minp, aspu_gamma = calc_spus!(x, t_in, mvn, B)
   @inbounds rank_spus!(x.rnk, x.zb, B)
 
-  aspu = 1
+  aspu_p = 1
   @simd for i in 1:B
-    @inbounds ((1 + B - x.rnk[2,i])/B) < minp && (aspu += 1)
+    @inbounds ((1 + B - x.rnk[2,i])/B) <= minp && (aspu_p += 1)
   end
-  aspu/(B+1), aspu_gamma, minp
+  aspu_p/(B+1), aspu_gamma
 end
 
 parse32(x) = parse(Float32, x)
@@ -193,44 +298,106 @@ function parsesnp(snpnow)
   return tm[1], broadcast(parse32, tm[2:n])
 end
 
-function runsnp!{T<:Real}(zi::Array{T, 1}, r::Aspurun, x::Aspuvals, bmax = Inf)
+function runsnp!{T<:Real}(zi::Array{T, 1}, r::Aspurun,
+  x::Aspuvals, bmax = Inf)
+
   p0, mvn = r.p0, r.mvn
   logB = min(r.logB, bmax)
   aspu = 0
   aspu_gamma = 0
   while (p0 <= logB) && (aspu < 15/(10^(p0)))
     p0 > logB && (p0 = logB)
-    aspu, aspu_gamma = aspu!(ceil(Int,10^p0), zi, mvn, x)
+    aspu, aspu_gamma = aspu!(round(Int64,10^p0), zi, mvn, x)
     p0 += 1
   end
   return aspu, aspu_gamma
 end
 
-function runsnp!(snp::AbstractString, r::Aspurun, x::Aspuvals, bmax = Inf)
+function runsnp!(snp::AbstractString, r::Aspurun, x::Aspuvals,
+  bmax = Inf)
   snpname, zi = parsesnp(snp)
   aspu, aspu_gamma = runsnp!(zi, r, x, bmax)
   return snpname, aspu, aspu_gamma
 end
 
-function runsnp!{T<:Real}(snpmat::Matrix{T}, r::Aspurun, x::Aspuvals, bmax = Inf)
-  return [runsnp!(snpmat[i,:],r, x, bmax) for i in 1:size(snpmat,1)]
+function runsnp!{T<:Real}(snpmat::Matrix{T}, r::Aspurun,
+  x::Aspuvals, bmax = Inf)
+  return [runsnp!(snpmat[i,:], r, x, bmax) for i in 1:size(snpmat, 1)]
 end
 
-# function runsnp!(snp::AbstractString,r::Aspurun, x::Aspuvals, bmax = Inf)
-#   p0, mvn = r.p0, r.mvn
-#   logB = min(r.logB, bmax)
-#   snpname, zi = parsesnp(snp)
-#   aspu = 0
-#   aspu_gamma = 0
-#   while (p0 <= logB) && (aspu < 15/(10^(p0)))
-#     p0 > logB && (p0 = logB)
-#     aspu, aspu_gamma = aspu!(ceil(Int,10^p0), zi, mvn, x)
-#     p0 += 1
-#   end
-#   return snpname, aspu, aspu_gamma
-# end
 
 
+function aspu!{T<:Real}(B::Int64, t_in::Array{T}, x::Aspuvals)
+  fill!(x.pval, 1)
+  zi_spu = getspu(t_in, length(t_in))
+  for i in 1:B
+    for j in 1:9
+      @inbounds x.zb[j,i] > zi_spu[j] && (x.pval[j] += 1)
+    end
+  end
+  aspu_gamma = sortperm(x.pval)[1]
+  minp = x.pval[aspu_gamma]/(B+1)
+
+  aspu_p = 1
+  @simd for i in 1:B
+    @inbounds ((1 + B - x.rnk[2,i])/B) <= minp && (aspu_p += 1)
+  end
+  aspu_p/(B+1), aspu_gamma
+end
+function runsnp_rep!{T<:Real}(zi::AbstractArray{T, 1}, r::Aspurun,
+  x::Aspuvals, bmax = Inf)
+  return aspu!(round(Int64, 10^r.logB), zi, x)
+end
+function runsnp_rep!{T<:Real}(snpmat::AbstractArray{T, 2}, r::Aspurun,
+  x::Aspuvals, bmax = Inf)
+  return [runsnp_rep!(snpmat[i,:], r, x, bmax) for i in 1:size(snpmat, 1)]
+end
+
+function readtrans!{T<:Real, S<:AbstractString}(ar::Array{T, 2}, fname::S)
+  #read in z0 to replicate
+  filein = open(fname, "r")
+  tm = split(readline(filein), ',')
+  tmlen = length(tm)
+  for j in 1:length(tm)
+    ar[j, 1] = parse(T, tm[j])
+  end
+
+  i = 1
+  while(!eof(filein))
+    i += 1
+    tm = split(readline(filein), ',')
+    for j in 1:tmlen
+      ar[j, i] = parse(T, tm[j])
+    end
+  end
+  tmlen
+end
+
+function rep_setup!{T<:Real, S<:AbstractString}(ar::Array{T, 2},
+  rk::Array{UInt32, 2}, fname::S)
+  ntraits = readtrans!(ar, fname)
+  calc_once!(ar, rk, ntraits)
+end
+
+function rep_setup!{T<:Real}(ar::Array{T, 2}, rk::Array{UInt32, 2}, mvn::MvNormal)
+  rand!(mvn, view(ar, 1:length(mvn), :)
+  calc_once!(ar, rk, length(mvn))
+end
+
+function calc_once!{T<:Real}(ar::Array{T, 2}, rk::Array{UInt32, 2}, n::Int)
+  #get z0 spus, and ranks
+  tmval = view(ar, 1:n, :)
+  B = size(ar, 2)
+  firstline = tmval[:,1]
+  for i in 2:B
+    zbnow = view(ar, :, i-1)
+    getspu!(zbnow, tmval[:,i], n)
+  end
+  getspu!(view(ar, :, B), firstline, n)
+  @inbounds rank_spus!(rk, ar, B)
+end
+
+end #end of module
 
 
 
