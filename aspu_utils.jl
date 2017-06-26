@@ -21,7 +21,7 @@ function makecov(mat, outname="vcov_aspu.txt")
   minZ = minimum(2*cdf(Normal(), -abs(mat)), 2)
   nullsnps = minZ[:] .> 0.05/(size(mat,1)/size(mat,2))
   estv = cor(mat[nullsnps,:])
-  writecsv("vcov_aspu.txt", estv)
+  writecsv(outname, estv)
   outname
 end
 
@@ -57,44 +57,74 @@ function pmap_msg(f, lst)
     results
 end
 
+function pathcheck(p)
+  isfile(p) || println("ERROR: file $(p) not found")
+  1-isfile(p)
+end
+nand(a,b) = !(a & b)
+checkargs(inp, a, b, f) = f(in(a,keys(inp)), in(b,keys(inp)))
+argnor(inp, a, b) = !(in(a,keys(inp) | in(b,keys(inp))))
+
+function argexcl(inp, a, b)
+  iserr = in(a,keys(inp)) & in(b,keys(inp))
+  iserr && println("ERROR: Cannot use both --$(a) and --$(b)")
+  iserr
+end
+function argeither(inp, a, b)
+  iserr = !(in(a,keys(inp)) $ in(b,keys(inp)))
+  iserr && println("ERROR: Need either --$(a) or --$(b)")
+  iserr
+end
+function argdep(inp, a, b)
+  iserr = in(a, keys(inp)) & !(in(b, keys(inp)))
+  iserr && println("ERROR: --$(a) must be used with --$(b)")
+  iserr
+end
+
 function parse_aspu(argsin)
+  tbeg = dtnow()
   incmd = join(argsin, " ")
   pinputs = Dict()
-  [get!(pinputs, split(i)[1], split(i)[2]) for i in split(incmd, "--")[2:end]]
+  [get!(pinputs, split(i)[1], size(split(i),1) > 1 ? split(i)[2] : true) for i in split(incmd, "--")[2:end]]
+  isarg(a) = in(a, keys(pinputs))
 
-  #ERRORS
+  #Check errors
+  haserr = 0
 
-  #floating point width
-  if haskey(pinputs, "floatsize") && !in(pinputs["floatsize"], ["32", "64"])
-    println("Error: floatsize must be 32 or 64\n")
-    exit()
+  if isarg("floatsize") && !in(pinputs["floatsize"], ["32", "64"])
+    println("ERROR: --floatsize must be 32 or 64\n")
+    haserr += 1
+  end
+  if isarg("nullsim") && !(typeof(parse(pinputs["nullsim"])) <: Int)
+    println("ERROR: --nullsim must be an integer number")
+    haserr += 1
   end
 
-  #input file
-  if !haskey(pinputs, "filein"); println("Error: no input file defined with filein\n"); exit(); end
-  if !isfile(pinputs["filein"]); println("Error: input file not found\n"); exit(); end
+  haserr += argeither(pinputs, "nullsim", "filein")
+  haserr += argexcl(pinputs, "incov", "outcov")
+  haserr += argexcl(pinputs, "replicate", "keezb")
+  haserr += argexcl(pinputs, "replicate", "logB")
+  haserr += argexcl(pinputs, "replicate", "incov")
+  haserr += argdep(pinputs, "replicate", "filein")
 
-  #covariance
-  haskey(pinputs, "incov") && if haskey(pinputs, "outcov"); println("Error: use either incov or outcov\n"); exit(); end
-  if haskey(pinputs, "replicate") && (haskey(pinputs, "keepzb") | haskey(pinputs, "logB"))
-    println("Cannot use --replicate with --keepzb or --logB\n")
-    exit()
-  end
+  isarg("filein") && (haserr += pathcheck(pinputs["filein"]))
+  isarg("incov") && (haserr += pathcheck(pinputs["incov"]))
+  if haserr > 0;println("There were $(haserr) command-line error(s)\n");exit();end
 
   #Set defaults
-  haskey(pinputs, "replicate") || haskey(pinputs, "logB") || get!(pinputs, "logB", "5")
-  haskey(pinputs, "outcov") || haskey(pinputs, "replicate") || get!(pinputs, "outcov", "vcov_aspu.txt")
-  haskey(pinputs, "floatsize") || get!(pinputs, "floatsize", "32")
+  checkargs(pinputs, "replicate", "logB", |) || get!(pinputs, "logB", "5")
+  checkargs(pinputs, "outcov", "replicate", |) || get!(pinputs, "outcov", "vcov_aspu_$(tbeg).txt")
+  isarg("floatsize") || get!(pinputs, "floatsize", "32")
 
-  if haskey(pinputs, "replicate")
-    dfltname = "aspu_results_$(dtnow())_replicate.csv"
+  if isarg("replicate")
+    dfltname = "aspu_results_$(tbeg)_replicate.csv"
   else
-    logB = round(parse(pinputs["logB"]), 2)
-    dfltname = "aspu_results_$(dtnow())_$(round(10^logB/10^floor(logB),2))E$(floor(Int64,logB)).csv"
+    logB = parse(pinputs["logB"])
+    bl, br = round(10^logB/10^floor(logB),2), floor(Int64,logB)
+    dfltname = "aspu_results_$(tbeg)_$(bl)E$(br).csv"
   end
 
-  haskey(pinputs, "fileout") || get!(pinputs, "fileout", dfltname)
-
+  isarg("fileout") || get!(pinputs, "fileout", dfltname)
   return pinputs
 end
 
@@ -380,7 +410,7 @@ function rep_setup!{T<:Real, S<:AbstractString}(ar::Array{T, 2},
 end
 
 function rep_setup!{T<:Real}(ar::Array{T, 2}, rk::Array{UInt32, 2}, mvn::MvNormal)
-  rand!(mvn, view(ar, 1:length(mvn), :)
+  rand!(mvn, view(ar, 1:length(mvn), :))
   calc_once!(ar, rk, length(mvn))
 end
 
@@ -398,11 +428,6 @@ function calc_once!{T<:Real}(ar::Array{T, 2}, rk::Array{UInt32, 2}, n::Int)
 end
 
 end #end of module
-
-
-
-
-
 
 
 
