@@ -6,6 +6,9 @@ Adaptive Sum of Powered Scores (aSPU)
         Reference: doi:10.1002/gepi.21931
         Contact: Antoine Baldassari baldassa@email.unc.edu
 
+        Requires Julia 1.0+ 
+        Will install Julia packages: ClusterManagers, CSV, Distributions
+        
         Computes aggregate p-values from multiple traits, using GWAS results.
 
         Input is a comma-separated file with a header, with SNP names in the
@@ -14,7 +17,7 @@ Adaptive Sum of Powered Scores (aSPU)
         Output is comma-separated, with columns for SNP name, aspu p-value,
         and best-powered gamma value
 
-        The SLURM log file will be named aspu_julia_<timestamp>.out
+        The log file will be named aspu_julia_<timestamp>.out
 
 
         USAGE
