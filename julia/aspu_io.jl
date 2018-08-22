@@ -1,6 +1,6 @@
 using Distributions, Distributed, CSV, DelimitedFiles, Random, ClusterManagers
 
-include("/proj/epi/CVDGeneNas/antoine/bin/aspu_julia_1.0/aspu_utils_io.jl")
+include("/proj/epi/CVDGeneNas/antoine/bin/aspu_julia/julia/aspu_utils_io.jl")
 using Main.aspu_utils
 mylog = open("aspu_log.txt", "a")
 
@@ -24,7 +24,7 @@ if (np > 1)
   end
 end
 
-@everywhere include("/proj/epi/CVDGeneNas/antoine/bin/aspu_julia_1.0/aspu_utils_alt.jl")
+@everywhere include("/proj/epi/CVDGeneNas/antoine/bin/aspu_julia/julia/aspu_utils_alt.jl")
 @everywhere using Distributions, Random, DelimitedFiles
 @everywhere using Main.aspu_module
 println("\nInputs:")
