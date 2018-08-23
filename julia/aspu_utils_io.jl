@@ -41,10 +41,8 @@ function readtstats(infile, T::DataType)
   snpnames, tstats
 end
  
-function pmap_msg(f, lst, logf, fout, snpnames)
-    np = nprocs()
+function pmap_msg(f, lst, logf, fout, snpnames, np)
     n = length(lst)
-    results = Array{Any}(undef, n)
     i = 1
     nextidx() = (idx=i; i+=1; idx)
     @sync begin
@@ -70,7 +68,6 @@ function pmap_msg(f, lst, logf, fout, snpnames)
             end
         end
     end
-    # results
 end
 
 function pathcheck(p)

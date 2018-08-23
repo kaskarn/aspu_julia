@@ -1,10 +1,10 @@
 #!/bin/bash
 homedir=`pwd`
 script=$(readlink -f "$0")
-scriptpath=$(dirname "$SCRIPT")
+scriptpath=$(dirname "$script")
 
 if [ $# -eq 0 ]; then
-	cat $scriptpath/README.md
+	more $scriptpath/README.md
   exit
 fi
 
@@ -56,14 +56,16 @@ addpkg=`comm -13 <(ls ~/.julia/packages/) <(echo -e "ClusterManagers\nCSV\nDistr
 [[ -z $addpkg ]] || echo "Installing missing Julia Packages. This will take a few minutes.\nPackage(s): $addpkg ..."
 [[ -z $addpkg ]] || $jexec -e "using Pkg; [Pkg.add(i) for i = [`sed 's/^\|$/"/g' <(echo $addpkg) | sed 's/ /" "/g'`]]"
 
-[[ -z $norun ]] || ncpu=2
+# [[ -z $norun ]] || ncpu=2
  
-juliacall="$jexec /proj/epi/CVDGeneNas/antoine/bin/aspu_julia/julia/aspu_io.jl"
+juliacall="$jexec $scriptpath/julia/aspu_io.jl"
 
 # echo $tojulia
-echo sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -n $ncpu --cpus-per-task 1 -N 2-$ncpu --mem-per-cpu=$mem --time=7-0 $slurmopts --wrap="$juliacall $tojulia" > aspu_log.txt
-[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -n $ncpu --cpus-per-task 1 -N 2-$ncpu --mem-per-cpu=$mem --time=7-0 $slurmopts --wrap="$juliacall $tojulia"
+echo sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -n $ncpu --cpus-per-task 1 -N 1-$ncpu --mem-per-cpu=$mem --time=7-0 $slurmopts --wrap="$juliacall $tojulia" > aspu_log.txt
+
+[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -n $ncpu --cpus-per-task 1 -N 1-$ncpu --mem-per-cpu=$mem --time=7-0 $slurmopts --wrap="$juliacall $tojulia"
 [[ -z $testnow ]] || $juliacall $tojulia
+# [[ -z $testnow ]] || srun --pty -n $ncpu --cpus-per-task 1 -N 2-$ncpu --mem-per-cpu=$mem --time=7-0 $slurmopts $juliacall $tojulia
 
 cd $homedir
 

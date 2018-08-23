@@ -222,37 +222,49 @@ function calc_spus_iter!(x::Aspuvals{T}, pows::Array{Int64, 1}, t_in::Vector{T},
   fill!(x.pval, 1)
   
   n = length(mvn)
-  tmval = zeros(T, length(mvn))
+  # tmval = zeros(T, length(mvn))
+
   tmspu = zeros(T, length(pows))
   k = 0
   
   B0 = min(size(x.A0,2), Int(floor(B/10)))
+  
   zi_spu = getspu(pows, t_in, n)
   for i in 1:B0
     for j in eachindex(pows)
       x.A0[j, i] > zi_spu[j] && (x.pval[j] += 1)
       if x.A0[j, i] > x.lowmin[j]
         k = k + 1
-        x.Astk[:, k] = x.A0[:, i]
+        # x.Astk[:, k] = x.A0[:, i]
+        for z in eachindex(pows)
+          x.Astk[z, k] = x.A0[z, i]
+        end
       end
     end
   end
   
-  for i in (B0+1):B
-    keepsim = true
-    rand!(mvn, tmval)
-    getspu!(tmspu, pows, tmval, n)
+  chunks = div(B,B0)-1
+  for chk in chunks
+    zbnow = view(x.zb, :, 1:B0)
+    rand!(mvn, zbnow)
+    for i in 1:B0
+      keepsim = true
+      # rand!(mvn, tmval)
+      getspu!(tmspu, pows, zbnow[:,i], n)
 
-    for j in eachindex(pows)
-      tmspu[j] > zi_spu[j] && (x.pval[j] += 1)
-      if tmspu[j] > x.lowmin[j] && keepsim
-        keepsim = false
-        k = k + 1
-        x.Astk[:, k] = tmspu
+      for j in eachindex(pows)
+        tmspu[j] > zi_spu[j] && (x.pval[j] += 1)
+        if tmspu[j] > x.lowmin[j] && keepsim
+          keepsim = false
+          k = k + 1
+          # x.Astk[:, k] = tmspu
+          for z in eachindex(pows)
+            x.Astk[z, k] = tmspu[z]
+          end
+        end
       end
     end
   end
-  
   min_iter, aspu_gamma = findmin(x.pval)
   minp = min_iter/(B+1)
   
