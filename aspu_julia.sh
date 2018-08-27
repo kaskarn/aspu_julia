@@ -8,6 +8,7 @@ if [ $# -eq 0 ]; then
   exit
 fi
 
+#Parse input parameters
 while [[ $# -gt 0 ]]; do
   if [ "$1" == "--filein" ]; then
     filein=`readlink -f $2`
@@ -31,41 +32,52 @@ while [[ $# -gt 0 ]]; do
 	shift 
 done
 
+#Detect errors
 [[ -z $filein ]] && err="ERROR: Option --filein is required."
 [[ -z $logB ]] && err="ERROR: Option --logB is required.\n$err"
 [[ -z $ncpu ]] && err="ERROR: Option --ncpu is required.\n$err"
 echo -e "$err"
 [[ ! -z $err ]] && exit
 
+#Create results directory
 [[ -z $name ]] && name="aspu_run_`date +%Y_%m_%d_%Hh_%Mm_%Ss`"
 [[ -d $name ]] || mkdir $name
 cd $name
 
-filein=`readlink -f $filein`
-[[ -z $incov ]] || incov=`readlink -f $incov`
+#Make covariance matrix
+if [ -z "$incov" ]; then
+  echo "Creating covariance matrix from $filein..."
+  tmr=`mktemp`
+  covnam="covmat_`basename $filein`"
+  echo "
+library(data.table)
+fin<-fread(\"$filein\")
+keep<-fin[,do.call(\"pmax\",lapply(.SD[,-1], abs))] < (-qnorm(0.5e-5,lower.tail = T))
+rmat<-cor(fin[keep,-1])
+write.table(rmat,\"$covnam\",col.names=F,row.names=F,sep=\",\")
+" > $tmr
+  Rscript $tmr
+  rm $tmr
+  tojulia="$tojulia --incov `readlink -f $covnam`"
+fi
 
-
-mem="7GB"
+#Set exe paths
 jexec="/proj/epi/CVDGeneNas/antoine/bin/julia-1.0.0/bin/julia"
+juliacall="$jexec $scriptpath/julia/aspu_io.jl"
 
+#Install packages as needed
 [[ -d ~/.julia/packages ]] || mkdir -p ~/.julia/packages
-# echo "Updating Julia packages... this may take a few minutes"
-# $jexec -e "using Pkg; Pkg.update()"
-
 addpkg=`comm -13 <(ls ~/.julia/packages/) <(echo -e "ClusterManagers\nCSV\nDistributions")`
 [[ -z $addpkg ]] || echo "Installing missing Julia Packages. This will take a few minutes.\nPackage(s): $addpkg ..."
 [[ -z $addpkg ]] || $jexec -e "using Pkg; [Pkg.add(i) for i = [`sed 's/^\|$/"/g' <(echo $addpkg) | sed 's/ /" "/g'`]]"
 
-# [[ -z $norun ]] || ncpu=2
  
-juliacall="$jexec $scriptpath/julia/aspu_io.jl"
+# save command
+echo sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -n $ncpu --cpus-per-task 1 -N 1-$ncpu --time=7-0 $slurmopts --wrap="$juliacall $tojulia" > aspu_cmd.txt
 
-# echo $tojulia
-echo sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -n $ncpu --cpus-per-task 1 -N 1-$ncpu --mem-per-cpu=$mem --time=7-0 $slurmopts --wrap="$juliacall $tojulia" > aspu_log.txt
-
-[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -n $ncpu --cpus-per-task 1 -N 1-$ncpu --mem-per-cpu=$mem --time=7-0 $slurmopts --wrap="$juliacall $tojulia"
+[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -n $ncpu --cpus-per-task 1 -N 1-$ncpu --time=7-0 $slurmopts --wrap="$juliacall $tojulia"
 [[ -z $testnow ]] || $juliacall $tojulia
-# [[ -z $testnow ]] || srun --pty -n $ncpu --cpus-per-task 1 -N 2-$ncpu --mem-per-cpu=$mem --time=7-0 $slurmopts $juliacall $tojulia
+
 
 cd $homedir
 

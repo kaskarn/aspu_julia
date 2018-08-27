@@ -2,62 +2,46 @@ using Distributions, Distributed, CSV, DelimitedFiles, Random, ClusterManagers
 
 include("/proj/epi/CVDGeneNas/antoine/bin/aspu_julia/julia/aspu_utils_io.jl")
 using Main.aspu_utils
-mylog = open("aspu_log.txt", "a")
+isarg(a, d=inp) = in(a, keys(d))
 
 #Parse options
 #for testing:
 if length(ARGS) == 0
-  tmarg = ["--filein /proj/epi/CVDGeneNas/antoine/bin/aspu_julia/tests/inputs/testfin.txt --incov /proj/epi/CVDGeneNas/antoine/bin/aspu_julia/tests/inputs/testcov.txt --logB 6 --ncpu 1 --floatsize 64"]
+  tmarg = ["--filein /proj/epi/CVDGeneNas/antoine/bin/aspu_julia/tests/inputs/testfin.txt --incov /proj/epi/CVDGeneNas/antoine/bin/aspu_julia/tests/inputs/testcov.txt --logB 6 --ncpu 2 --floatsize 64"]
   inp = parse_aspu(tmarg)
 else
   inp = parse_aspu(ARGS) 
 end
-isarg(a, d=inp) = in(a, keys(d))
 
 #Start workers
 np=parse(Int, inp["ncpu"])
 if (np > 1)
   if haskey(ENV, "LSB_HOSTS")
-    addprocs(split(ENV["LSB_HOSTS"])[2:end]) #keep master on own slot
+    addprocs(split(ENV["LSB_HOSTS"])[2:end]) #keep master on own slot?
   elseif haskey(ENV, "SLURM_JOB_NODELIST")
-    addprocs(SlurmManager(np),topology=:master_worker)
+    addprocs(SlurmManager(np))
+  else
+    addprocs(np)
   end
 end
 
+#Load modules & packages
 @everywhere include("/proj/epi/CVDGeneNas/antoine/bin/aspu_julia/julia/aspu_utils_alt.jl")
 @everywhere using Distributions, Random, DelimitedFiles
 @everywhere using Main.aspu_module
-println("\nInputs:")
-display(inp)
-println("\n")
+
+println("\nInputs:"); display(inp); println("\n")
+
+#Set program parameters
 logB = isarg("replicate") ? log10(nlines(inp["replicate"])) : parse(Int, inp["logB"])
 float_t = inp["floatsize"] == "32" ? Float32 : Float64
-pows = Array{Int64, 1}()
+pows=collect(1:9)
 
-if isarg("pows")
-  for i in eval(parse(Int, inp["pows"]))
-    x = collect(i)
-    pows=[pows..., x...]
-  end
-else
-  pows=collect(1:9)
-end
+#Make covariance matrix
+snpnames, in_tstats = readtstats(inp["filein"], float_t)
+isarg("replicate") || (fcov = isarg("incov") ? inp["incov"] : makecov(in_tstats, inp["outcov"]))
 
-if isarg("nullsim")
-  pown = parse(Int64, inp["nullsim"])
-  estv = readdlm(inp["incov"], ',', float_t)
-  mvn_p = MvNormal(estv)
-  in_tstats = Array{float_t}(pown, size(estv, 1))
-  for i in 1:pown
-    rand!(mvn_p, view(in_tstats,i, :))
-  end
-  snpnames = ["sim_$i" for i=1:size(in_tstats, 1)]
-  fcov = makecov(in_tstats, "nullsim_$(inp["outcov"])")
-else
-  snpnames, in_tstats = readtstats(inp["filein"], float_t)
-  isarg("replicate") || (fcov = isarg("incov") ? inp["incov"] : makecov(in_tstats, inp["outcov"]))
-end
-
+#Create constants
 ntraits = size(in_tstats, 2)
 @eval @everywhere ntraits = $ntraits
 @eval @everywhere logB = $logB
@@ -67,8 +51,9 @@ ntraits = size(in_tstats, 2)
 @everywhere float_t = floatsize == "32" ? Float32 : Float64
 
 #Setup aspu objects
+## aspuvals
 @everywhere B0 = min(10^7, Int(floor((10^logB))))
-@everywhere runvals = Aspuvals{float_t}(
+@everywhere const runvals = Aspuvals{float_t}(
     Int(floor(logB)),
     zeros(Int64, 2, Int(round(B0, digits = 0))), #rank
     zeros(Int64, 2, Int(round(B0, digits = 0))), #rank static,
@@ -81,60 +66,105 @@ ntraits = size(in_tstats, 2)
     Array{float_t}(undef, length(pows), B0), #A0
     Array{float_t}(undef, length(pows), B0), #Astk
 )
-
-if haskey(inp, "replicate")
-  @everywhere estv = eye(float_t, 2)
-  @eval @everywhere repfile = $(inp["replicate"])
-else
-  @eval @everywhere fcov = $fcov
-  @everywhere estv = readdlm(fcov, ',', float_t)
-end
+## aspurun
+@eval @everywhere fcov = $fcov
+@everywhere estv = readdlm(fcov, ',', float_t)
 
 @everywhere mvn = MvNormal(estv)
 @sync @everywhere thisrun = Aspurun(logB, mvn, 3, pows)
 @sync @everywhere init_spus!(runvals, pows, mvn, Int(10^logB))
 
-#Setup replication
-isarg("replicate") && @everywhere rep_setup!(runvals.zb, runvals.rnk, repfile)
-isarg("keepzb") && @everywhere rep_setup!(runvals.zb, runvals.rnk, thisrun.mvn)
-
-#Chunk input (to do: maybe send directly to workers instead. 10K seems sweet spot for aspu on killdevil)
-tstats_chunks = chunkify(in_tstats, min(size(in_tstats, 1), nworkers()*10000));
-snpnames_chunks = chunkify(snpnames, min(size(in_tstats, 1), nworkers()*10000));
-
-zi = vec(tstats_chunks[1]);
-
-if isarg("norun")
-  @time aspu_iter!(pows, 6, zi, mvn, runvals)
-  println("")
-  @time aspu_iter!(pows, 6, zi, mvn, runvals)
-  println("")
-  @time aspu_first!(pows, 6, zi, mvn, runvals)
-  @time aspu_first!(pows, 6, zi, mvn, runvals)
-  @time runsnp!(zi, thisrun, runvals)
-  @time runsnp!(zi, thisrun, runvals)
-end
-
-printlog(mylog, "\n\n$(dtnow()): Preprocessing complete\n")
+#Preprocessing complete
+println("\n\n$(dtnow()): Preprocessing complete")
 if isarg("norun"); print("All ready to go! Remove norun option to launch for good\n"); exit(); end
 
-#Prepare output file
+#Output function and file
 fout = open(inp["fileout"], "w")
-write(fout, "chunk,index,snpid,aspu_p")
+write(fout, "snpid,aspu_p")
 for i in pows
   write(fout, ",pval_$(i)")
 end
-write(fout, ",gamma")
+write(fout, ",gamma", '\n')
 flush(fout)
 
-#Run models
-printlog(mylog, "$(dtnow()): ASPU started on $(nworkers()) workers\n")
-if haskey(inp, "keepzb") || haskey(inp, "replicate")
-  @time pmap_msg(x->runsnp_rep!(x,thisrun,runvals), tstats_chunks, mylog, fout, snpnames_chunks, np)
-else
-  @time pmap_msg(x->runsnp!(x,thisrun,runvals), tstats_chunks, mylog, fout, snpnames_chunks, np)
+fin=open(inp["filein"],"r"); readline(fin);
+out = runsnp!(readline(fin), thisrun, runvals);
+
+#Setup channel
+const buffer_s = 100;
+const jobs = RemoteChannel(()->Channel{String}(buffer_s));
+const results = RemoteChannel(()->Channel{typeof(out)}(buffer_s));
+
+#Dispatchers
+@everywhere function do_work(jobs, results)
+  while true
+    snp = take!(jobs)
+    out = runsnp!(snp, thisrun, runvals)
+    put!(results, out)
+  end
+end;
+function make_jobs(n, io)
+  for i in 1:n
+    put!(jobs, readline(io))
+  end
+end;
+
+#Start workers
+close(fin); fin=open(inp["filein"],"r"); readline(fin);
+@async make_jobs(buffer_s, fin)
+for p in workers()
+  remote_do(do_work, p, jobs, results)
+end;
+
+#rock and roll
+@time begin
+  #bulk
+  while true
+    for k in 1:10^5
+      if !isready(jobs)
+        eof(fin) && break
+        put!(jobs, readline(fin))
+      end
+      write_aspu(fout, take!(results))    
+    end
+    eof(fin) && break
+    println("$(Dates.format(now(), "Yud_HhMM:SS")) -- 100,000 SNPs processed")
+  end
+  #flush buffer
+  while(isready(results))
+    write_aspu(fout, take!(results))
+  end
 end
-printlog(mylog, "$(dtnow()): ASPU run finished. Job done...\n")
+
+close(fout)
+exit()
+
+## all done!!
+
+
+
+
+#old parser
+# if isarg("pows")
+  # for i in eval(parse(Int, inp["pows"]))
+    # x = collect(i)
+    # pows=[pows..., x...]
+  # end
+# else
+
+
+#Run models
+# printlog(mylog, "$(dtnow()): ASPU started on $(nworkers()) workers\n")
+# @time pmap_msg(x->runsnp!(x,thisrun,runvals), tstats_chunks, mylog, fout, snpnames_chunks, nprocs())
+# @time pmap(x->runsnp!(x,thisrun,runvals),tstats_chunks)
+
+# fin=open(inp["filein"],"r")
+# readline(fin)
+# @time runsnp!(readline(fin),thisrun,runvals)
+# @time pmap(x->runsnp!(x,thisrun,runvals), eachline(fin))
+# @time map(x->runsnp!(x,thisrun,runvals), eachline(fin))
+
+
 # printlog(mylog, "$(dtnow()): ASPU run finished. Writing to file...\n")
 
 # snp_i = 1

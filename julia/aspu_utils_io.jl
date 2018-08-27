@@ -6,9 +6,17 @@ using Distributions, Dates, CSV, DelimitedFiles, Distributed, Random
 export
   readtstats, makecov, chunkify,
   pmap_msg, dtnow, parse_aspu,
-  nline, printlog
+  nline, printlog, isarg, write_aspu
 
 dtnow() = Dates.format(now(), "Yud_HhMM")
+
+isarg(a, d=inp) = in(a, keys(d))
+
+function write_aspu(io, out)
+  write(io, "$(out[1]),$(out[2][1]),")
+  join(io, out[2][2], ',')
+  write(io, ",$(out[2][3])\n")
+end;
 
 function printlog(io, msg)
   print(msg)
@@ -39,35 +47,6 @@ function readtstats(infile, T::DataType)
   snpnames = copy(in_t[:,1])
   tstats = convert(Matrix{T}, in_t[:,2:length(in_t)])
   snpnames, tstats
-end
- 
-function pmap_msg(f, lst, logf, fout, snpnames, np)
-    n = length(lst)
-    i = 1
-    nextidx() = (idx=i; i+=1; idx)
-    @sync begin
-        for p=1:np
-            if p != myid() || np == 1
-                @async begin
-                    while true
-                        idx = nextidx()
-                        if idx > n
-                            break
-                        end
-                        if (idx % (div(n,100))) == 0 
-                          printlog(logf, "$(dtnow()): Chunk $(idx) of $(n) started!\n")
-                          flush(logf)
-                          flush(fout)
-                        end
-                        res=remotecall_fetch(f, p, lst[idx])
-                        for j in 1:length(res)
-                          write(fout, "\n$(idx),$(j),$(snpnames[idx][j]),$(res[j][1]),$(join(res[j][2], ',')),$(res[j][3])")
-                        end
-                    end
-                end
-            end
-        end
-    end
 end
 
 function pathcheck(p)

@@ -222,12 +222,10 @@ function calc_spus_iter!(x::Aspuvals{T}, pows::Array{Int64, 1}, t_in::Vector{T},
   fill!(x.pval, 1)
   
   n = length(mvn)
-  # tmval = zeros(T, length(mvn))
-
   tmspu = zeros(T, length(pows))
   k = 0
   
-  B0 = min(size(x.A0,2), Int(floor(B/10)))
+  B0 = min(size(x.A0,2), B)
   
   zi_spu = getspu(pows, t_in, n)
   for i in 1:B0
@@ -323,10 +321,15 @@ function runsnp!(zi::Vector{T}, r::Aspurun, x::Aspuvals{T}, bmax = Inf) where {T
 end
 
 #Run aSPU on Matrix
-function runsnp!(snpmat::Matrix{T}, r::Aspurun, x::Aspuvals, bmax = Inf) where {T<:Real}
+function runsnp!(snpmat::Matrix{T}, r::Aspurun, x::Aspuvals{T}, bmax = Inf) where {T<:Real}
   return [runsnp!(vec(snpmat[i,:]), r, x, bmax) for i in 1:size(snpmat, 1)]
 end
 
+function runsnp!(snp::String, r::Aspurun, x::Aspuvals{T}, bmax = Inf) where {T<:Real}
+  snp_arr = split(snp, ',')
+  snpname, zi = snp_arr[1], parse.(T, snp_arr[2:end])
+  return [snpname, runsnp!(zi, r, x, bmax)]
+end
 
 #### OLD #####
 
