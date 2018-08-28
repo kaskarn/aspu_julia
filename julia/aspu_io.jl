@@ -118,7 +118,7 @@ for p in workers()
 end;
 
 #rock and roll
-@time begin
+@time @sync begin
   #bulk
   while true
     for k in 1:10^5
