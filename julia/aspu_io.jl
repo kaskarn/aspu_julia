@@ -1,4 +1,4 @@
-using Distributions, Distributed, CSV, DelimitedFiles, Random, ClusterManagers
+using Distributions, Distributed, CSV, DelimitedFiles, Random, ClusterManagers, Dates
 
 include("/proj/epi/CVDGeneNas/antoine/bin/aspu_julia/julia/aspu_utils_io.jl")
 using Main.aspu_utils
@@ -38,11 +38,13 @@ float_t = inp["floatsize"] == "32" ? Float32 : Float64
 pows=collect(1:9)
 
 #Make covariance matrix
-snpnames, in_tstats = readtstats(inp["filein"], float_t)
-isarg("replicate") || (fcov = isarg("incov") ? inp["incov"] : makecov(in_tstats, inp["outcov"]))
+fin=open(inp["filein"],"r")
+headline=split(readline(fin), ',')
+# isarg("replicate") || (fcov = isarg("incov") ? inp["incov"] : makecov(in_tstats, inp["outcov"]))
+fcov = inp["incov"]
 
 #Create constants
-ntraits = size(in_tstats, 2)
+ntraits = length(headline)-1
 @eval @everywhere ntraits = $ntraits
 @eval @everywhere logB = $logB
 @eval @everywhere logB = Int(logB)
@@ -87,11 +89,10 @@ end
 write(fout, ",gamma", '\n')
 flush(fout)
 
-fin=open(inp["filein"],"r"); readline(fin);
 out = runsnp!(readline(fin), thisrun, runvals);
 
 #Setup channel
-const buffer_s = 100;
+const buffer_s = 2*np;
 const jobs = RemoteChannel(()->Channel{String}(buffer_s));
 const results = RemoteChannel(()->Channel{typeof(out)}(buffer_s));
 
@@ -117,27 +118,28 @@ for p in workers()
 end;
 
 #rock and roll
-@time begin
+@time @sync begin
   #bulk
   while true
     for k in 1:10^5
-      if !isready(jobs)
-        eof(fin) && break
-        put!(jobs, readline(fin))
-      end
-      write_aspu(fout, take!(results))    
+      eof(fin) && break
+      put!(jobs, readline(fin))
+      write_aspu(fout, take!(results))
     end
     eof(fin) && break
     println("$(Dates.format(now(), "Yud_HhMM:SS")) -- 100,000 SNPs processed")
+    flush(fout)
+    flush(stdout)
   end
+  sleep(60)
   #flush buffer
-  while(isready(results))
+  while(isready(results) | isready(jobs))
     write_aspu(fout, take!(results))
   end
 end
 
+flush(fout)
 close(fout)
-exit()
 
 ## all done!!
 
