@@ -24,12 +24,7 @@ struct Aspuvals{T<:AbstractFloat}
   
   lowmin::Array{T, 1}
   A0::Array{T, 2}
-  # A::Array{T, 3}
-  # A_top::Array{T, 3}
   Astk::Array{T, 2}
-  
-  # R::Array{Int64, 2}
-  # DUPS::Array{Bool, 2}
 end
 
 struct Aspurun
@@ -164,10 +159,6 @@ function init_spus!(x::Aspuvals{T}, pows::Array{Int64, 1}, mvn::MvNormal, B::Int
     tmp_r = sortperm(x.A0[i, :])
     top_r = tmp_r[Int(B0-CHUNKN+1):Int(B0)]
     x.lowmin[i] = minimum(x.A0[i, top_r])
-    # x.A_top[i,:,:] = x.A0[:, top_r]
-    # for j in 1:size(x.R,2)
-      # x.R[i,j] = j
-    # end
   end
   
   logB0 = Int(floor(log10(B0)))
@@ -204,7 +195,7 @@ function calc_spus!(x::Aspuvals{T}, pows::Array{Int64, 1}, t_in::Vector{T}, B::I
   minp, x.pval, aspu_gamma
 end
 
-function calc_spus_first!(x::Aspuvals{T}, pows::Array{Int64, 1}, t_in::Vector{T}, B) where {T<:Real}
+function calc_spus_first!(x::Aspuvals{T}, pows::Array{Int64, 1}, t_in::Vector{T}, B::Int) where {T<:Real}
   fill!(x.pval, 1)
   zi_spu = getspu(pows, t_in, length(t_in))
   for i in 1:B
@@ -233,7 +224,6 @@ function calc_spus_iter!(x::Aspuvals{T}, pows::Array{Int64, 1}, t_in::Vector{T},
       x.A0[j, i] > zi_spu[j] && (x.pval[j] += 1)
       if x.A0[j, i] > x.lowmin[j]
         k = k + 1
-        # x.Astk[:, k] = x.A0[:, i]
         for z in eachindex(pows)
           x.Astk[z, k] = x.A0[z, i]
         end
@@ -242,12 +232,11 @@ function calc_spus_iter!(x::Aspuvals{T}, pows::Array{Int64, 1}, t_in::Vector{T},
   end
   
   chunks = div(B,B0)-1
-  for chk in chunks
+  for chk in 1:chunks
     zbnow = view(x.zb, :, 1:B0)
     rand!(mvn, zbnow)
     for i in 1:B0
       keepsim = true
-      # rand!(mvn, tmval)
       getspu!(tmspu, pows, zbnow[:,i], n)
 
       for j in eachindex(pows)
@@ -255,7 +244,6 @@ function calc_spus_iter!(x::Aspuvals{T}, pows::Array{Int64, 1}, t_in::Vector{T},
         if tmspu[j] > x.lowmin[j] && keepsim
           keepsim = false
           k = k + 1
-          # x.Astk[:, k] = tmspu
           for z in eachindex(pows)
             x.Astk[z, k] = tmspu[z]
           end
@@ -278,7 +266,7 @@ function aspu_first!(pows::Array{Int64, 1}, logB::Int64, t_in::Vector{T}, mvn::M
   @inbounds @fastmath minp, pvals, aspu_gamma = calc_spus_first!(x, pows, t_in, B)
   aspu_p = 1
   ind = logB - 2
-  @simd for i in 1:B
+  for i in 1:B
     @inbounds ((1 + B - x.rnk_all[ind,2,i])/B) <= minp && (aspu_p += 1)
   end
   aspu_p/(B+1), pvals, aspu_gamma
