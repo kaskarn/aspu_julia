@@ -1,7 +1,3 @@
-.*txt
-.*csv
-.*R
-tests/
 
 # Windows image file caches
 Thumbs.db
