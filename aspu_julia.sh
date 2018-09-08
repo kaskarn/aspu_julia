@@ -62,7 +62,7 @@ write.table(rmat,\"$covnam\",col.names=F,row.names=F,sep=\",\")
 fi
 
 #Set exe paths
-jexec="/proj/epi/CVDGeneNas/antoine/bin/julia-1.0.0/bin/julia"
+jexec="julia"
 juliacall="$jexec $scriptpath/julia/aspu_io.jl"
 
 #Install packages as needed
