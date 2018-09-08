@@ -320,11 +320,7 @@ function runsnp!(snp::String, r::Aspurun, x::Aspuvals{T}, bmax = Inf) where {T<:
   return [snpname, runsnp!(zi, r, x, bmax)]
 end
 
-
-
-
-
-
+end
 
 
 
