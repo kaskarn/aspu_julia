@@ -71,12 +71,12 @@ addpkg=`comm -13 <(ls ~/.julia/packages/) <(echo -e "ClusterManagers\nCSV\nDistr
 [[ -z $addpkg ]] || echo "Installing missing Julia Packages. This will take a few minutes.\nPackage(s): $addpkg ..."
 [[ -z $addpkg ]] || $jexec -e "using Pkg; [Pkg.add(i) for i = [`sed 's/^\|$/"/g' <(echo $addpkg) | sed 's/ /" "/g'`]]"
 
- 
+acct=`sacctmgr list User format="DefaultAccount%30,User" | grep $USER | xargs | cut -f1 -d' '`
 mem="5GB"
 # save command
-echo sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -n $ncpu --cpus-per-task 1 -N 2-$ncpu --time=7-0 --mem-per-cpu=$mem $slurmopts --wrap="$juliacall $tojulia" > aspu_cmd.txt
+echo sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct -n $ncpu --cpus-per-task 1 -N 2-$ncpu --time=7-0 --mem-per-cpu=$mem $slurmopts --wrap="$juliacall $tojulia" > aspu_cmd.txt
 
-[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -n $ncpu --cpus-per-task 1 -N 2-$ncpu --time=7-0 --mem-per-cpu=$mem $slurmopts --wrap="$juliacall $tojulia"
+[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct -n $ncpu --cpus-per-task 1 -N 2-$ncpu --time=7-0 --mem-per-cpu=$mem $slurmopts --wrap="$juliacall $tojulia"
 [[ -z $testnow ]] || $juliacall $tojulia
 
 
