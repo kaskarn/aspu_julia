@@ -1,6 +1,10 @@
 using Distributions, Distributed, CSV, DelimitedFiles, Random, ClusterManagers, Dates
 
-include("/proj/epi/CVDGeneNas/antoine/bin/aspu_julia/julia/aspu_utils_io.jl")
+sdir = ARGS[1]
+sargs = ARGS[2:end]
+include("$(sdir)/julia/aspu_utils_io.jl")
+
+
 using Main.aspu_utils
 isarg(a, d=inp) = in(a, keys(d))
 
@@ -10,7 +14,7 @@ if length(ARGS) == 0
   tmarg = ["--filein /proj/epi/CVDGeneNas/antoine/bin/aspu_julia/tests/inputs/testfin.txt --incov /proj/epi/CVDGeneNas/antoine/bin/aspu_julia/tests/inputs/testcov.txt --logB 6 --ncpu 2 --floatsize 64"]
   inp = parse_aspu(tmarg)
 else
-  inp = parse_aspu(ARGS) 
+  inp = parse_aspu(sargs) 
 end
 
 #Start workers
@@ -26,7 +30,8 @@ if (np > 1)
 end
 
 #Load modules & packages
-@everywhere include("/proj/epi/CVDGeneNas/antoine/bin/aspu_julia/julia/aspu_utils_alt.jl")
+@eval @everywhere sdir = $sdir
+@everywhere include("$(sdir)/julia/aspu_utils_alt.jl")
 @everywhere using Distributions, Random, DelimitedFiles
 @everywhere using Main.aspu_module
 

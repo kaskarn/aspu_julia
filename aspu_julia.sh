@@ -62,7 +62,8 @@ write.table(rmat,\"$covnam\",col.names=F,row.names=F,sep=\",\")
 fi
 
 #Set exe paths
-jexec="julia"
+jsym=`whereis julia`
+jexec=`readlink -f $jsym | head -2 | tail -1`
 juliacall="$jexec $scriptpath/julia/aspu_io.jl"
 
 #Install packages as needed
@@ -74,9 +75,9 @@ addpkg=`comm -13 <(ls ~/.julia/packages/) <(echo -e "ClusterManagers\nCSV\nDistr
 acct=`sacctmgr list User format="DefaultAccount%30,User" | grep $USER | xargs | cut -f1 -d' '`
 mem="5GB"
 # save command
-echo sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct -n $ncpu --cpus-per-task 1 -N 1-$ncpu --time=5-0 --mem-per-cpu=$mem $slurmopts --wrap=\"$juliacall $tojulia\" > aspu_cmd.txt
+echo sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct -n $ncpu --cpus-per-task 1 -N 1-$ncpu --time=5-0 --mem-per-cpu=$mem $slurmopts --wrap=\"$juliacall $scriptpath $tojulia\" > aspu_cmd.txt
 
-[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct -n $ncpu --cpus-per-task 1 -N 1-$ncpu --time=5-0 --mem-per-cpu=$mem $slurmopts --wrap="$juliacall $tojulia"
+[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct -n $ncpu --cpus-per-task 1 -N 1-$ncpu --time=5-0 --mem-per-cpu=$mem $slurmopts --wrap="$juliacall $scriptpath $tojulia"
 [[ -z $testnow ]] || $juliacall $tojulia
 
 
