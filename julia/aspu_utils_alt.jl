@@ -7,11 +7,12 @@ export
   runsnp!, runsnp_rep!, getspu!, aspu!,
   rep_setup!, calc_spus!, rank_spus!,
   getspu, getspu!, init_spus!, calc_spus_first!,
-  calc_spus_iter!, CHUNKN, MAXN, aspu_first!, aspu_iter!, aspu!
+  calc_spus_iter!, aspu_first!, aspu_iter!, aspu!,
+  MINB, CHUNKN, MAXN
   
 const CHUNKN = 10000
 const MAXN = Int64(1e6)
-
+const MINB = 7
 
 struct Aspuvals{T<:AbstractFloat}
   maxb::Int64
@@ -142,7 +143,7 @@ end
 
 #Init
 function init_spus!(x::Aspuvals{T}, pows::Array{Int64, 1}, mvn::MvNormal, B::Int64) where {T<:Real}
-  B0 = min(10^7, Int(floor(B)))
+  B0 = min(10^MINB, Int(floor(B)))
 
   n = length(mvn)
   # zb = view(x.zb, :, 1:B0)
@@ -162,7 +163,7 @@ function init_spus!(x::Aspuvals{T}, pows::Array{Int64, 1}, mvn::MvNormal, B::Int
   end
   
   logB0 = Int(floor(log10(B0)))
-  for i in 3:min(logB0, 7)
+  for i in 3:min(logB0, MINB)
     tmp = copy(x.A0[:,1:10^i])
     tmpr = view(x.rnk_all, i-2, :, :)
     rank_spus!(tmpr, tmp)
@@ -294,7 +295,7 @@ function runsnp!(zi::Vector{T}, r::Aspurun, x::Aspuvals{T}, bmax = Inf) where {T
   aspu_gamma = 0
   pvals = Array{Float64}(undef, length(pows))
   
-  while (p0 <= min(logB,7)) && (aspu < 15/(10^(p0)))
+  while (p0 <= min(logB,MINB)) && (aspu < 15/(10^(p0)))
     p0 > logB && (p0 = logB)
     aspu, pvals, aspu_gamma = aspu_first!(pows, p0, zi, mvn, x)
     p0 += 1

@@ -54,12 +54,12 @@ ntraits = length(headline)-1
 
 #Setup aspu objects
 ## aspuvals
-@everywhere B0 = min(10^7, Int(floor((10^logB))))
+@everywhere B0 = min(10^MINB, Int(floor((10^logB))))
 @everywhere const runvals = Aspuvals{float_t}(
     Int(floor(logB)),
     zeros(Int64, 2, Int(round(B0, digits = 0))), #rank
     zeros(Int64, 2, Int(round(B0, digits = 0))), #rank static,
-    zeros(Int64, min(logB,7) - 2, 2, round(Int64, B0)), #all ranks,
+    zeros(Int64, min(logB,MINB) - 2, 2, round(Int64, B0)), #all ranks,
     
     ones(length(pows)), #pvals
     Matrix{float_t}(undef, ntraits, Int(round(B0, digits = 0))), #zb
@@ -133,7 +133,7 @@ end;
   end
   sleep(60)
   #flush buffer
-  while(isready(results) | isready(jobs))
+  for i in 1:buffer_z
     write_aspu(fout, take!(results))
   end
 end
