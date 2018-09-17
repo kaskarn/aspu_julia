@@ -86,7 +86,7 @@ wrap="$juliacall $scriptpath $tojulia"
 # save command
 echo sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct $cpuspecs --cpus-per-task 1 --time=5-0 --mem-per-cpu=$mem $slurmopts --wrap=\"$wrap\" > aspu_cmd.txt
 
-[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct -n $ncpu --cpus-per-task 1 -N 1-$ncpu --time=5-0 --mem-per-cpu=$mem $slurmopts --wrap="$wrap"
+[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct $cpuspecs --cpus-per-task 1 --time=5-0 --mem-per-cpu=$mem $slurmopts --wrap="$wrap"
 [[ -z $testnow ]] || $wrap
 
 
