@@ -8,11 +8,10 @@ export
   rep_setup!, calc_spus!, rank_spus!,
   getspu, getspu!, init_spus!, calc_spus_first!,
   calc_spus_iter!, aspu_first!, aspu_iter!, aspu!,
-  MINB, CHUNKN, MAXN
+  MINB, CHUNKN
   
 const CHUNKN = 10000
-const MAXN = Int64(1e6)
-const MINB = 7
+const MINB = 6
 
 struct Aspuvals{T<:AbstractFloat}
   maxb::Int64

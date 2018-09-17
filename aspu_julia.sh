@@ -29,6 +29,8 @@ while [[ $# -gt 0 ]]; do
 	[[ "$1" == "--slurm" ]] && slurmopts=$2
   [[ "$1" == "--testnow" ]] && testnow="true"
   [[ "$1" == "--name" ]] && name=$2
+  [[ "$1" == "--nnodes" ]] && nnodes=$2
+  [[ "$1" == "--stopgc" ]] && stopgc=="true"
 	shift 
 done
 
@@ -73,12 +75,19 @@ addpkg=`comm -13 <(ls ~/.julia/packages/) <(echo -e "ClusterManagers\nCSV\nDistr
 [[ -z $addpkg ]] || $jexec -e "using Pkg; [Pkg.add(i) for i = [`sed 's/^\|$/"/g' <(echo $addpkg) | sed 's/ /" "/g'`]]"
 
 acct=`sacctmgr list User format="DefaultAccount%30,User" | grep $USER | xargs | cut -f1 -d' '`
-mem="5GB"
-# save command
-echo sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct -n $ncpu --cpus-per-task 1 -N 1-$ncpu --time=5-0 --mem-per-cpu=$mem $slurmopts --wrap=\"$juliacall $scriptpath $tojulia\" > aspu_cmd.txt
+mem="1GB"
+cpuspecs="-n $ncpu -N 1-$ncpu"
+[[ -z "$nnodes" ]] || cpuspecs="-N $nnodes" 
 
-[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct -n $ncpu --cpus-per-task 1 -N 1-$ncpu --time=5-0 --mem-per-cpu=$mem $slurmopts --wrap="$juliacall $scriptpath $tojulia"
-[[ -z $testnow ]] || $juliacall $tojulia
+
+#stop all google cloud instances if specified
+wrap="$juliacall $scriptpath $tojulia"
+# [[ "$stopgc" == "true" ]] && wrap="$wrap; gcloud compute instances delete 
+# save command
+echo sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct $cpuspecs --cpus-per-task 1 --time=5-0 --mem-per-cpu=$mem $slurmopts --wrap=\"$wrap\" > aspu_cmd.txt
+
+[[ -z $testnow ]] && sbatch -o "aspu_julia${norun}_`date +%Y_%m_%d_%Hh_%Mm_%Ss`.out" -A $acct -n $ncpu --cpus-per-task 1 -N 1-$ncpu --time=5-0 --mem-per-cpu=$mem $slurmopts --wrap="$wrap"
+[[ -z $testnow ]] || $wrap
 
 
 cd $homedir
