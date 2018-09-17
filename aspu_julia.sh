@@ -75,7 +75,7 @@ addpkg=`comm -13 <(ls ~/.julia/packages/) <(echo -e "ClusterManagers\nCSV\nDistr
 [[ -z $addpkg ]] || $jexec -e "using Pkg; [Pkg.add(i) for i = [`sed 's/^\|$/"/g' <(echo $addpkg) | sed 's/ /" "/g'`]]"
 
 acct=`sacctmgr list User format="DefaultAccount%30,User" | grep $USER | xargs | cut -f1 -d' '`
-mem="900MB"
+mem="700MB"
 cpuspecs="-n $ncpu -N 1-$ncpu"
 [[ -z "$nnodes" ]] || cpuspecs="-N $nnodes" 
 
