@@ -138,7 +138,7 @@ end;
   end
   sleep(60)
   #flush buffer
-  for i in 1:buffer_z
+  for i in 1:buffer_s
     write_aspu(fout, take!(results))
   end
 end
