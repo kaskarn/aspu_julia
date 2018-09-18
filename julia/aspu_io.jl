@@ -71,7 +71,7 @@ ntraits = length(headline)-1
     
     Array{float_t}(undef, length(pows)), #lowmin
     Array{float_t}(undef, length(pows), B0), #A0
-    Array{float_t}(undef, length(pows), B0), #Astk
+    Array{float_t}(undef, length(pows), Int64(1e7)), #Astk
 )
 ## aspurun
 @eval @everywhere fcov = $fcov

@@ -11,7 +11,7 @@ export
   MINB, CHUNKN
   
 const CHUNKN = 10000
-const MINB = 6
+const MINB = 7
 
 struct Aspuvals{T<:AbstractFloat}
   maxb::Int64
