@@ -294,13 +294,13 @@ function runsnp!(zi::Vector{T}, r::Aspurun, x::Aspuvals{T}, bmax = Inf) where {T
   aspu_gamma = 0
   pvals = Array{Float64}(undef, length(pows))
   
-  while (p0 <= min(logB,MINB)) && (aspu < 15/(10^(p0)))
+  while (p0 <= min(logB,MINB)) && (aspu < 50/(10^(p0)))
     p0 > logB && (p0 = logB)
     aspu, pvals, aspu_gamma = aspu_first!(pows, p0, zi, mvn, x)
     p0 += 1
   end
   
-  while (p0 <= logB && (aspu < 15/10^(p0)))
+  while (p0 <= logB && (aspu < 50/10^(p0)))
     p0 > logB && (p0 = logB)
     aspu, pvals, aspu_gamma = aspu_iter!(pows, p0, zi, mvn, x)
     p0 += 1
